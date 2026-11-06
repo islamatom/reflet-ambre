@@ -180,6 +180,7 @@ footer{text-align:center;padding:40px 20px 120px;color:var(--ink2);font-size:12p
 .socials a:hover{transform:translateY(-3px) scale(1.05)}
 .socials svg{width:26px;height:26px}
 footer .script{font-size:40px;color:var(--rose)}
+footer .atom-ct{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 14px;margin-top:10px;font-size:11.5px}footer .atom-ct a{color:var(--ink2);text-decoration:none;opacity:.85}
 footer .legal{margin:16px auto 14px;font-size:11.5px;line-height:1.7;color:var(--ink2);opacity:.9}footer .legal a{color:inherit;text-decoration:none}
 
 .sticky{position:fixed;left:16px;right:16px;bottom:16px;z-index:60;transform:translateY(140%);transition:.5s cubic-bezier(.2,.8,.2,1)}
@@ -333,7 +334,30 @@ body.homme .wow-word{text-shadow:0 6px 30px rgba(62,106,78,.55)!important}
 body.homme .wow-in .name{background:linear-gradient(110deg,#3E6A4E,#5E8C6A 35%,#F4ECD2 50%,#C9A35A 65%,#3E6A4E)!important;-webkit-background-clip:text!important;background-clip:text!important}
 body.homme .veil path{fill:#F4FAF5}
 
-/* galerie */
+/* galerie : 2 grandes photos + défilement */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.duo-c{position:relative;border:0;padding:0;border-radius:22px;overflow:hidden;aspect-ratio:3/4.3;background:var(--blush);cursor:pointer;box-shadow:0 18px 34px -22px rgba(120,70,30,.6)}
+.duo-c img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s}
+.duo-c:active img{transform:scale(1.04)}
+.duo-t{position:absolute;left:0;right:0;bottom:0;padding:40px 12px 14px;background:linear-gradient(transparent,rgba(30,18,10,.72));color:#fff;text-align:left}
+.duo-t b{display:block;font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:500;line-height:1}
+.duo-t small{font-size:12px;letter-spacing:.04em;opacity:.9}
+.defile{overflow:hidden;margin:18px -20px 0;padding:4px 0;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.defile-in{display:flex;gap:8px;width:max-content;animation:defile var(--dur,40s) linear infinite}
+.defile-in img{height:96px;width:72px;object-fit:cover;border-radius:12px;display:block;cursor:zoom-in}
+@keyframes defile{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.defile-in{animation-duration:200s}}
+#catSheet{position:fixed;inset:0;z-index:110;background:var(--pearl);display:none;flex-direction:column}
+#catSheet.on{display:flex;animation:zIn .25s ease}
+.cs-top{display:flex;align-items:center;gap:10px;padding:max(14px,env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--blush2)}
+.cs-top button{border:0;background:var(--blush);width:40px;height:40px;border-radius:50%;font-size:24px;color:var(--rose-d);cursor:pointer}
+.cs-top h3{margin:0;font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:500}
+.cs-grid{flex:1;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 12px 40px;align-content:start}
+.cs-grid figure{margin:0;border-radius:14px;overflow:hidden;aspect-ratio:3/4;background:var(--blush);position:relative;cursor:zoom-in}
+.cs-grid img,.cs-grid video{width:100%;height:100%;object-fit:cover;display:block}
+.cs-grid figcaption{position:absolute;left:0;right:0;bottom:0;padding:18px 8px 6px;background:linear-gradient(transparent,rgba(30,20,16,.6));color:#fff;font-size:13px;font-style:italic}
+@media(min-width:760px){.cs-grid{grid-template-columns:repeat(3,1fr)}}
+/* (ancienne galerie) */
 #zoom{position:fixed;inset:0;z-index:120;background:rgba(24,16,12,.94);display:none;align-items:center;justify-content:center;padding:56px 10px 80px}
 #zoom.on{display:flex;animation:zIn .25s ease}@keyframes zIn{from{opacity:0}to{opacity:1}}
 #zImg{max-width:100%;max-height:100%;border-radius:12px;object-fit:contain;box-shadow:0 20px 60px rgba(0,0,0,.5)}
@@ -476,43 +500,14 @@ body:has(#volbox:not([hidden])) .sticky{opacity:0;pointer-events:none}
 <section id="galerie">
   <div class="kicker reveal">Nos créations</div>
   <h2 class="reveal">Robes &amp; costumes <em>en vrai</em></h2>
-  <div class="gal-tabs reveal" id="galTabs"><button class="on" data-c="tout">Tout</button><button data-c="Mariée">Mariée</button><button data-c="Costumes">Costumes</button></div>
-  <div class="gal" id="gal"></div>
-</section>
-<div id="zoom" role="dialog" aria-label="Photo en grand"><button id="zX" aria-label="Fermer">✕</button><button id="zP" aria-label="Précédente">‹</button><img id="zImg" alt=""><button id="zN" aria-label="Suivante">›</button><div id="zBas"><span id="zCap"></span><small id="zNum"></small></div></div>
-
-<!-- Collections -->
-<section id="collections">
-  <div class="kicker reveal">Nos collections</div>
-  <h2 class="reveal">Pour <em>elle</em> &amp; pour <em>lui</em></h2>
-  <div class="cards">
-    <article class="card bride reveal">
-      <span class="photo-note">VOS PHOTOS ICI</span>
-      <svg class="art" viewBox="0 0 200 320" aria-hidden="true">
-        <defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#f7ebe6"/></linearGradient></defs>
-        <path d="M70 40 Q100 30 130 40 L128 70 Q140 90 132 112 L150 150 Q185 250 195 315 L5 315 Q15 250 50 150 L68 112 Q60 90 72 70 Z" fill="url(#dg)"/>
-        <path d="M68 112 Q100 125 132 112" stroke="#d4ae6a" stroke-width="3" fill="none"/>
-        <g fill="#e8cfc8"><circle cx="85" cy="80" r="2"/><circle cx="100" cy="88" r="2"/><circle cx="115" cy="80" r="2"/><circle cx="92" cy="96" r="1.6"/><circle cx="108" cy="96" r="1.6"/></g>
-        <path d="M50 160 Q100 190 150 160 M30 230 Q100 265 170 230" stroke="#efe0d9" stroke-width="2" fill="none"/>
-      </svg>
-      <h3>Mariée</h3>
-      <p>Dentelle, bustier, épaules dénudées, traînes de rêve… Trouvez la robe qui vous ressemble.</p>
-    </article>
-    <article class="card suit reveal">
-      <span class="photo-note">VOS PHOTOS ICI</span>
-      <svg class="art" viewBox="0 0 200 320" aria-hidden="true">
-        <path d="M60 30 L100 60 L140 30 L175 50 L168 200 L150 205 L148 315 L104 315 L100 200 L96 315 L52 315 L50 205 L32 200 L25 50 Z" fill="#cfc3a8"/>
-        <path d="M100 60 L82 34 L60 30 L88 130 Z M100 60 L118 34 L140 30 L112 130 Z" fill="#b8a98b"/>
-        <path d="M100 60 L90 120 L100 135 L110 120 Z" fill="#fbf7ef"/>
-        <path d="M88 58 L100 66 L112 58 L112 72 L100 66 L88 72 Z" fill="#c98e89"/>
-        <circle cx="100" cy="150" r="3" fill="#a98a5a"/><circle cx="100" cy="170" r="3" fill="#a98a5a"/>
-        <path d="M135 75 l10 -6 l4 10 z" fill="#e8b9b2"/>
-      </svg>
-      <h3>Costumes</h3>
-      <p>Beige, gris, vert sauge… Pour le marié, les témoins et les petits garçons d'honneur.</p>
-    </article>
+  <div class="duo reveal">
+    <button class="duo-c" data-cat="Mariée"><img id="favM" alt="Robes de mariée"><span class="duo-t"><b>Mariée</b><small>Voir les robes →</small></span></button>
+    <button class="duo-c" data-cat="Costumes"><img id="favC" alt="Costumes"><span class="duo-t"><b>Costume</b><small>Voir les costumes →</small></span></button>
   </div>
+  <div class="defile" aria-hidden="true"><div class="defile-in" id="defile"></div></div>
 </section>
+<div id="catSheet" role="dialog" aria-label="Galerie"><div class="cs-top"><button id="csX" aria-label="Retour">‹</button><h3 id="csT"></h3></div><div class="cs-grid" id="csGrid"></div></div>
+<div id="zoom" role="dialog" aria-label="Photo en grand"><button id="zX" aria-label="Fermer">✕</button><button id="zP" aria-label="Précédente">‹</button><img id="zImg" alt=""><button id="zN" aria-label="Suivante">›</button><div id="zBas"><span id="zCap"></span><small id="zNum"></small></div></div>
 
 <section>
   <div class="kicker reveal">L'accompagnement</div>
@@ -549,7 +544,8 @@ body:has(#volbox:not([hidden])) .sticky{opacity:0;pointer-events:none}
   <div class="socials">
     <a href="https://www.facebook.com/refletambre" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.8 1.4-3.8 3.9v2.3H8v3h2.5V21z"/></svg></a>
     <a href="https://www.instagram.com/refletambrerobesdemariee/" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"/></svg></a>
-  </div><div class="legal">Reflet Ambré SRL · Promenade des Ours 18, 5300 Andenne<br>TVA BE 0442.621.391 · <a href="tel:+32475721852">0475 72 18 52</a></div><a class="credit" href="https://www.hassanimohamedislam.com" target="_blank" rel="noopener">Développé avec <span>♡</span> par le développeur <b>Atom</b></a></footer>
+  </div><div class="legal">Reflet Ambré SRL · Promenade des Ours 18, 5300 Andenne<br>TVA BE 0442.621.391 · <a href="tel:+32475721852">0475 72 18 52</a></div><a class="credit" href="https://www.hassanimohamedislam.com" target="_blank" rel="noopener">Développé avec <span>♡</span> par le développeur <b>Atom</b></a>
+  <div class="atom-ct"><a href="https://www.instagram.com/islem_atom/" target="_blank" rel="noopener">📷 @islem_atom</a><a href="mailto:islematom@gmail.com">✉️ islematom@gmail.com</a><a href="tel:+32499374830">📞 0499 37 48 30</a></div></footer>
 
 <button id="music" aria-label="Musique douce"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></button>
 <div id="volbox" hidden><span>🔈</span><input type="range" id="volr" min="0" max="100" value="18" aria-label="Volume de la musique"><span>🔊</span></div>
@@ -812,15 +808,28 @@ const RA_DB_LOCAL={open(){return new Promise((ok,ko)=>{try{const r=indexedDB.ope
   async get(k){try{const db=await this.open();return await new Promise(ok=>{const q=db.transaction('reglages').objectStore('reglages').get(k);q.onsuccess=()=>ok(q.result);q.onerror=()=>ok(undefined)})}catch(e){return undefined}}};
 const BASE=[{"f": "photos/robe-01.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-02.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-01.jpg", "cat": "Costumes", "legende": ""}, {"f": "photos/robe-03.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-04.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-02.jpg", "cat": "Costumes", "legende": "Monteria"}, {"f": "photos/robe-05.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-06.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-03.jpg", "cat": "Costumes", "legende": "Alicante sauge"}, {"f": "photos/robe-07.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-08.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-04.jpg", "cat": "Costumes", "legende": "Merida terracotta"}, {"f": "photos/robe-09.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-10.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-05.jpg", "cat": "Costumes", "legende": ""}, {"f": "photos/robe-11.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-12.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-06.jpg", "cat": "Costumes", "legende": ""}, {"f": "photos/robe-13.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-07.jpg", "cat": "Costumes", "legende": "Come marron"}, {"f": "photos/costume-08.jpg", "cat": "Costumes", "legende": ""}];
 const RA_DB=LIVE?{all:async()=>((await SITE_P)||{}).medias||[],get:async k=>((await SITE_P)||{})[k]}:RA_DB_LOCAL;
-let GAL=[],galCat='tout';
-function drawGal(){const g=document.getElementById('gal');
-  const mes=GAL.filter(m=>galCat==='tout'||m.cat===galCat).sort((a,b)=>b.date-a.date).map(m=>({type:m.type,src:SRC(m.url||m.blob),legende:m.legende||''}));
-  const base=BASE.filter(m=>galCat==='tout'||m.cat===galCat).map(m=>({type:'image',src:m.f,legende:m.legende}));
-  const l=mes.concat(base);VUE=l.filter(m=>m.type!=='video');
-  g.innerHTML='';l.forEach((m,i)=>{const f=document.createElement('figure');if(m.type==='video'&&i===0)f.className='wide';
-    f.innerHTML=(m.type==='video'?`<video src="${m.src}" autoplay muted loop playsinline disablepictureinpicture onloadedmetadata="this.muted=true;this.volume=0"></video>`:`<img src="${m.src}" alt="${m.legende?m.legende.replace(/"/g,''):'Reflet Ambré'}" loading="lazy">`)+(m.legende?`<figcaption></figcaption>`:'');
+let GAL=[],FAV={};
+const itemsCat=cat=>GAL.filter(m=>m.cat===cat).sort((a,b)=>b.date-a.date).map(m=>({type:m.type,src:SRC(m.url||m.blob),legende:m.legende||''}))
+  .concat(BASE.filter(m=>m.cat===cat).map(m=>({type:'image',src:m.f,legende:m.legende})));
+function drawGal(){
+  const M=itemsCat('Mariée').filter(x=>x.type!=='video'),C=itemsCat('Costumes').filter(x=>x.type!=='video');
+  const fm=FAV.mariee||(M[0]||{}).src,fc=FAV.costume||(C[0]||{}).src;
+  if(fm)document.getElementById('favM').src=fm;if(fc)document.getElementById('favC').src=fc;
+  // petites photos qui défilent : une fois homme, une fois mariée
+  const mix=[];for(let i=0;i<Math.max(M.length,C.length);i++){if(C[i])mix.push(C[i]);if(M[i])mix.push(M[i])}
+  const d=document.getElementById('defile');d.innerHTML='';
+  mix.concat(mix).forEach((x,i)=>{const im=document.createElement('img');im.src=x.src;im.alt='';im.loading='lazy';im.onclick=()=>{VUE=mix;zoom(i%mix.length)};d.appendChild(im)});
+  d.style.setProperty('--dur',Math.max(20,mix.length*3.2)+'s')}
+function ouvrirCat(cat){const l=itemsCat(cat);VUE=l.filter(x=>x.type!=='video');
+  document.getElementById('csT').textContent=cat==='Mariée'?'Robes de mariée':'Costumes';
+  const g=document.getElementById('csGrid');g.innerHTML='';
+  l.forEach(m=>{const f=document.createElement('figure');
+    f.innerHTML=(m.type==='video'?`<video src="${m.src}" autoplay muted loop playsinline onloadedmetadata="this.muted=true"></video>`:`<img src="${m.src}" alt="" loading="lazy">`)+(m.legende?'<figcaption></figcaption>':'');
     if(m.legende)f.querySelector('figcaption').textContent=m.legende;
-    if(m.type!=='video')f.onclick=()=>zoom(VUE.findIndex(v=>v.src===m.src));g.appendChild(f)})}
+    if(m.type!=='video')f.onclick=()=>zoom(VUE.findIndex(v=>v.src===m.src));g.appendChild(f)});
+  document.getElementById('catSheet').classList.add('on');document.body.style.overflow='hidden'}
+document.querySelectorAll('.duo-c').forEach(b=>b.onclick=()=>ouvrirCat(b.dataset.cat));
+document.getElementById('csX').onclick=()=>{document.getElementById('catSheet').classList.remove('on');document.body.style.overflow=''};
 let VUE=[],zi=0;
 function zoom(i){zi=(i+VUE.length)%VUE.length;const z=document.getElementById('zoom');document.getElementById('zImg').src=VUE[zi].src;document.getElementById('zCap').textContent=VUE[zi].legende||'';document.getElementById('zNum').textContent=(zi+1)+' / '+VUE.length;z.classList.add('on')}
 (()=>{const z=document.getElementById('zoom');let x0=null;
@@ -828,8 +837,10 @@ function zoom(i){zi=(i+VUE.length)%VUE.length;const z=document.getElementById('z
   z.onclick=e=>{if(e.target===z)z.classList.remove('on')};
   z.addEventListener('touchstart',e=>x0=e.touches[0].clientX,{passive:true});z.addEventListener('touchend',e=>{if(x0===null)return;const d=e.changedTouches[0].clientX-x0;if(Math.abs(d)>45)zoom(zi+(d<0?1:-1));x0=null});
   addEventListener('keydown',e=>{if(!z.classList.contains('on'))return;if(e.key==='Escape')z.classList.remove('on');if(e.key==='ArrowRight')zoom(zi+1);if(e.key==='ArrowLeft')zoom(zi-1)})})();
-document.querySelectorAll('#galTabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#galTabs button').forEach(x=>x.classList.toggle('on',x===b));galCat=b.dataset.c;drawGal()});
-drawGal();RA_DB.all().then(l=>{GAL=l;if(l.length)drawGal()});
+drawGal();
+RA_DB.all().then(l=>{GAL=l||[];drawGal()});
+(LIVE?SITE_P.then(s=>((s||{}).apropos||{}).favoris):RA_DB.get('favoris')).then(f=>{if(f){FAV=f;drawGal()}}).catch(()=>{});
+
 
 // ---------- Musique douce ----------
 let musique=null,VOL=.18;RA_DB.get('volume').then(v=>{if(typeof v==='number'){VOL=v/100;const r=document.getElementById('volr');if(r)r.value=v}});

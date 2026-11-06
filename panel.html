@@ -684,8 +684,12 @@ const RA_DB=LIVE?{
   all:async()=>(await siteData()).medias||[],
   async put(m){const c=await deposer(m.blob,'medias');const d=await API('media_ajout',{media:{id:m.id,type:m.type,cat:m.cat,haut:m.haut,legende:m.legende,date:m.date,chemin:c}});if(!d.ok)throw new Error(d.erreur)},
   async del(id){await API('media_suppr',{id})},
-  get:async k=>(await siteData())[k],
+  async get(k){const d=await siteData();if(k==='favoris')return((d.apropos)||{}).favoris||null;return d[k]},
   async set(k,v){let val=v;
+    if(k==='favoris'||k==='apropos'){const cur=(await siteData()).apropos||{};
+      if(k==='favoris'){const d=await API('reglage',{cle:'apropos',valeur:{...cur,photo:chemin(cur.photo)||null,favoris:v}});if(!d.ok)toast('⚠ '+(d.erreur||'Non enregistré'));return}
+      v={...v,favoris:cur.favoris||null}}
+    val=v;
     if(v instanceof Blob)val=await deposer(v,'musique');
     else if(v&&typeof v==='object'&&'photo' in v){val={...v};val.photo=v.photo instanceof Blob?await deposer(v.photo,'apropos'):chemin(v.photo)}
     else if(typeof v==='string')val=chemin(v);
@@ -693,10 +697,19 @@ const RA_DB=LIVE?{
 }:RA_DB_LOCAL;
 function reduire(file){return new Promise(ok=>{if(!file.type.startsWith('image/')){ok(file);return}const i=new Image();i.onload=()=>{const m=1600,r=Math.min(1,m/Math.max(i.width,i.height));const c=document.createElement('canvas');c.width=i.width*r;c.height=i.height*r;c.getContext('2d').drawImage(i,0,0,c.width,c.height);c.toBlob(b=>ok(b||file),'image/jpeg',.85)};i.onerror=()=>ok(file);i.src=URL.createObjectURL(file)})}
 let siteCat='Mariée';
+const BASE_PH=[{"f": "photos/robe-01.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-02.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-01.jpg", "cat": "Costumes", "legende": ""}, {"f": "photos/robe-03.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-04.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-02.jpg", "cat": "Costumes", "legende": "Monteria"}, {"f": "photos/robe-05.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-06.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-03.jpg", "cat": "Costumes", "legende": "Alicante sauge"}, {"f": "photos/robe-07.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-08.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-04.jpg", "cat": "Costumes", "legende": "Merida terracotta"}, {"f": "photos/robe-09.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-10.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-05.jpg", "cat": "Costumes", "legende": ""}, {"f": "photos/robe-11.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/robe-12.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-06.jpg", "cat": "Costumes", "legende": ""}, {"f": "photos/robe-13.jpg", "cat": "Mariée", "legende": ""}, {"f": "photos/costume-07.jpg", "cat": "Costumes", "legende": "Come marron"}, {"f": "photos/costume-08.jpg", "cat": "Costumes", "legende": ""}];
+async function choisirFav(cle,cat){const l=(await RA_DB.all()).filter(m=>m.cat===cat&&m.type!=='video').sort((a,b)=>b.date-a.date).map(m=>SRC(m.url||m.blob)).concat(BASE_PH.filter(m=>m.cat===cat).map(m=>m.f));
+  ouvrir(`<h3>Photo favorite · ${cat==='Mariée'?'Mariée':'Costume'}</h3><p style="font-size:13px;color:var(--ink2);margin:-4px 0 10px">Touchez la photo qui s'affichera en grand sur votre site.</p>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:60vh;overflow:auto">${l.map((u,i)=>`<img src="${u}" data-i="${i}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;cursor:pointer">`).join('')}</div>`);
+  document.querySelectorAll('#sheet img[data-i]').forEach(im=>im.onclick=async()=>{const f=Object.assign({},(await RA_DB.get('favoris'))||{});f[cle]=l[+im.dataset.i];await RA_DB.set('favoris',f);fermer();toast('Photo favorite enregistrée ♡');vSite()})}
 async function vSite(){const l=(await RA_DB.all()).sort((a,b)=>b.date-a.date);const mus=await RA_DB.get('musique');const AP_DEF={nom:'Dori',citation:"Découvrez mon univers et ce qui me fait vibrer, en étant chaque jour à votre service.",texte:"La boutique est née il y a 45 ans à Namur, et nous vous accueillons à Andenne depuis bientôt 10 ans. Expérimentée dans la robe de mariée et le costume homme, je vous propose une large collection et un conseil avisé, toujours dans la bienveillance.\n\nJe vous reçois chaque jour, uniquement sur rendez-vous, pour un vrai moment de détente. Je prends le temps du conseil et vous propose différents modèles, sans présélection, en respectant toujours au mieux votre budget.\n\nEt il n'y a aucune limite d'accompagnants : venez avec toutes celles et ceux que vous aimez ♡\n\nRobes de mariée, costumes, tenues pour le cortège et les enfants : je vous accompagne de A à Z, avec des conseils pros et modernes."};
   const ap=Object.assign({},AP_DEF,(await RA_DB.get('apropos'))||{});
-  const musOn=(await RA_DB.get('musiqueOn'))!==false;const vv=await RA_DB.get('volume');const vol=typeof vv==='number'?vv:18;
+  const FAVS=(await RA_DB.get('favoris'))||{};const musOn=(await RA_DB.get('musiqueOn'))!==false;const vv=await RA_DB.get('volume');const vol=typeof vv==='number'?vv:18;
   $('#main').innerHTML=`<h2 class="titre">Mon <em>site</em></h2><p style="color:var(--ink2);font-size:14px;margin:-6px 0 14px">Ajoutez vous-même vos photos et vidéos : elles apparaissent tout de suite dans la galerie « Nos créations » de votre site.<br><b>🔇 Les vidéos passent sans le son</b> : c'est votre musique douce qui joue sur le site.</p>
+  <div class="sous" style="margin-top:0">Mes 2 photos favorites</div>
+  <p style="font-size:13px;color:var(--ink2);margin:-4px 0 10px">Ce sont les 2 grandes photos de votre site. La cliente touche « Mariée » ou « Costume » et voit toutes vos robes ou tous vos costumes.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px">${[['mariee','Mariée','Mariée'],['costume','Costumes','Costume']].map(([k,c,n])=>{const u=FAVS[k]||((l.find(m=>m.cat===c&&m.type!=='video')||{}).url)||(BASE_PH.find(m=>m.cat===c)||{}).f||'';const uu=u&&typeof u!=='string'?SRC(u):u;
+    return `<div style="position:relative;aspect-ratio:3/4;border-radius:16px;overflow:hidden;background:var(--blush)"><img src="${uu}" style="width:100%;height:100%;object-fit:cover"><div style="position:absolute;left:0;right:0;bottom:0;padding:24px 8px 8px;background:linear-gradient(transparent,rgba(30,18,10,.7));color:#fff"><b style="font-family:'Cormorant Garamond';font-size:20px">${n}</b><br><button class="b b-rose b-sm" style="margin-top:6px" onclick="choisirFav('${k}','${c}')">Changer</button></div></div>`}).join('')}</div>
   <div class="card"><div class="lbl" style="margin-top:0">Dans quelle partie ?</div><div class="chips" id="sc">${['Mariée','Costumes'].map(c=>`<button class="chip ${c===siteCat?'on':''}">${c}</button>`).join('')}</div>
    <div class="lbl">Petit texte sous la photo (facultatif)</div><input class="inp" id="sl" placeholder="Ex : Robe Elena, dentelle de Calais">
    <div class="switch">Aussi en grand en haut du site (diaporama)<button class="tg" id="sh"></button></div>
@@ -725,7 +738,7 @@ async function vSite(){const l=(await RA_DB.all()).sort((a,b)=>b.date-a.date);co
   $('#sh').onclick=e=>e.target.classList.toggle('on');
   document.querySelectorAll('#sc .chip').forEach(b=>b.onclick=()=>{siteCat=b.textContent;document.querySelectorAll('#sc .chip').forEach(x=>x.classList.toggle('on',x===b))});
   $('#sf').onchange=async e=>{const fs=[...e.target.files];let n=0;for(const f of fs){if(f.size>60e6){toast(f.name+' : trop lourd (60 Mo max)');continue}$('#sst').textContent='Ajout de '+f.name+'…';
-     const b=await reduire(f);try{await RA_DB.put({id:'m'+Date.now()+Math.random().toString(36).slice(2,6),type:f.type.startsWith('video')?'video':'image',blob:b,cat:siteCat,haut:$('#sh').classList.contains('on'),legende:$('#sl').value.trim(),date:Date.now()});n++}catch(err){toast('Pas assez de place pour '+f.name)}}
+     const b=await reduire(f);try{await RA_DB.put({id:'m'+Date.now()+Math.random().toString(36).slice(2,6),type:f.type.startsWith('video')?'video':'image',blob:b,cat:siteCat,haut:$('#sh').classList.contains('on'),legende:$('#sl').value.trim(),date:Date.now()});n++}catch(err){toast('⚠ '+f.name+' non ajoutée : '+((err&&err.message)||'erreur'));console.error(err)}}
     if(n){toast(n+' ajout(s) sur votre site ♡');coeurs(innerWidth/2,innerHeight/2,30)}vSite()};
   let apPhoto=ap.photo||null;if(apPhoto){$('#apPh').style.backgroundImage=`url(${SRC(apPhoto)})`;$('#apPh').textContent=''}
   $('#apf').onchange=async e=>{const f=e.target.files[0];if(!f)return;apPhoto=await reduire(f);$('#apPh').style.backgroundImage=`url(${URL.createObjectURL(apPhoto)})`;$('#apPh').textContent=''};
@@ -807,7 +820,7 @@ function vReglages(){
 
   ${vAcces()}
   <button class="b b-line" style="width:100%;margin-top:16px" onclick="LS.del('ra_jeton');LS.del('ra_acces');location.reload()">Se déconnecter</button>
-  <p class="demo-note" style="margin-top:18px">Panel réalisé par Atom · v3.1</p>`}
+  <p class="demo-note" style="margin-top:18px">Panel réalisé par Atom · v3.2</p>`}
 
 /* ================= FLEURS QUI TOMBENT ================= */
 (function(){const c=$('#fleurs'),x=c.getContext('2d');let W,H,dpr;
