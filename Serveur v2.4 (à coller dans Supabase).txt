@@ -1,0 +1,520 @@
+// ============================================================
+//  Reflet Ambré · fonction serveur "api" · v2.4
+//  Supabase > Edge Functions > nom : api
+//  Secrets à ajouter (Edge Functions > Secrets) :
+//    BREVO_API_KEY   = ta clé API Brevo (tu la colles toi-même, jamais dans le chat)
+//    SMS_EXPEDITEUR  = RefletAmbre   (11 caractères max, optionnel)
+// ============================================================
+import { createClient } from "npm:@supabase/supabase-js@2";
+import webpush from "npm:web-push@3.6.7";
+
+const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+  auth: { persistSession: false },
+});
+const URL_BASE = Deno.env.get("SUPABASE_URL")!;
+const HEURES = ["10:00", "11:30", "13:30", "15:00", "16:30", "18:00"];
+const HEURES_JOUR: Record<string, string[]> = { "2": ["10:00", "11:30", "13:30", "15:00", "16:30"], "3": ["10:00", "11:30", "13:30", "15:00", "16:30"], "4": ["10:00", "11:30", "13:30", "15:00", "16:30"], "5": ["10:00", "11:30", "13:30", "15:00", "16:30"], "6": ["09:00", "10:30", "12:00", "14:00", "15:30", "17:00"], "0": [], "1": [] };
+const RDV_JOUR: Record<string, string[] | null> = { "2": ["10:00", "16:30"], "3": ["10:00", "16:30"], "4": ["10:00", "16:30"], "5": ["10:00", "16:30"], "6": ["09:00", "17:00"], "0": null, "1": null };
+const mnG = (x: string) => { const [h, m] = String(x).split(":"); return (+h) * 60 + (+m); };
+const hhmm = (m: number) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+const heuresDuJour = (S: any, d: number): string[] | null => {
+  const rj = S.rdvJour || RDV_JOUR; const w = rj[d] ?? rj[String(d)];
+  if (Array.isArray(w) && w.length === 2) { const o: string[] = []; for (let m = mnG(w[0]); m <= mnG(w[1]); m += 30) o.push(hhmm(m)); return o; }
+  if (w === null) return [];
+  const hj = S.heuresJour || HEURES_JOUR; const l = hj[d] ?? hj[String(d)]; return Array.isArray(l) ? l : null;
+};
+// SMS automatiques payants (Brevo) : coupés. Dori envoie elle-même par WhatsApp ou SMS depuis son téléphone.
+const SMS_AUTO = false;
+const TYPES = ["1er essayage mariée", "Retouches mariée", "1er essayage costume", "Retouches costume"];
+const DUREES: Record<string, number> = { "1er essayage mariée": 120, "Retouches mariée": 60, "1er essayage costume": 90, "Retouches costume": 30, "Robe de mariée": 120, "Costume": 90, "Cortège & enfants": 60 };
+const duree = (t: any) => DUREES[String(t || "")] || 90;
+const CODE_DEPART = "1234"; // seulement tant que Dori n'a rien enregistré
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+};
+const rep = (d: unknown, s = 200) =>
+  new Response(JSON.stringify(d), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
+const erreur = (m: string, s = 400) => rep({ ok: false, erreur: m }, s);
+
+// ---------- outils ----------
+const newId = () => Date.now() * 100 + Math.floor(Math.random() * 100);
+const txt = (v: unknown, max = 200) => String(v ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
+export function telInter(t: string): string {
+  let d = String(t || "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  else if (d.startsWith("0")) d = "32" + d.slice(1);
+  return d.length >= 10 && d.length <= 15 ? d : "";
+}
+function bruxelles(d = new Date()) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Brussels", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hour12: false,
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return { iso: `${p.year}-${p.month}-${p.day}`, heure: Number(p.hour) % 24, an: Number(p.year) };
+}
+const addJ = (iso: string, n: number) => {
+  const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
+};
+const jourSem = (iso: string) => new Date(iso + "T12:00:00Z").getUTCDay();
+const JL = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const fmtL = (iso: string) => { const d = new Date(iso + "T12:00:00Z"); return `${JL[d.getUTCDay()]} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()]}`; };
+const ip = (req: Request) => (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "inconnu";
+
+async function secret(nom: string) {
+  const { data } = await db.from("secrets").select("valeur").eq("nom", nom).single();
+  return data!.valeur as string;
+}
+async function hmac(msg: string) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(await secret("signature")), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const s = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg));
+  return btoa(String.fromCharCode(...new Uint8Array(s))).replace(/[+/=]/g, "");
+}
+async function trop(quoi: string, qui: string, max: number, minutes: number) {
+  const depuis = new Date(Date.now() - minutes * 60e3).toISOString();
+  const { count } = await db.from("tentatives").select("id", { count: "exact", head: true }).eq("quoi", quoi).eq("qui", qui).gte("quand", depuis);
+  return (count || 0) >= max;
+}
+const noter = (quoi: string, qui: string) => db.from("tentatives").insert({ quoi, qui });
+
+async function reglage(cle: string) {
+  const { data } = await db.from("reglages").select("valeur").eq("cle", cle).maybeSingle();
+  return data?.valeur ?? null;
+}
+const panelS = async () => (await reglage("panel")) as any;
+const urlPublic = (chemin: string) => db.storage.from("site").getPublicUrl(chemin).data.publicUrl;
+
+// ---------- SMS (Brevo) ----------
+export async function envoyerSMS(tel: string, texte: string, cle?: string) {
+  const dest = telInter(tel);
+  if (!dest || !texte.trim()) return { ok: false, raison: "numéro ou texte vide" };
+  if (cle) {
+    const { data } = await db.from("sms_log").select("id").eq("cle", cle).maybeSingle();
+    if (data) return { ok: true, deja: true };
+  }
+  const key = Deno.env.get("BREVO_API_KEY");
+  let ok = false, reponse = "pas de clé Brevo";
+  if (key) {
+    const corps = JSON.stringify({
+      sender: (Deno.env.get("SMS_EXPEDITEUR") || "RefletAmbre").slice(0, 11),
+      recipient: dest, content: texte.slice(0, 600), type: "transactional", unicodeEnabled: /[^\x00-\x7F]/.test(texte),
+    });
+    const h = { "api-key": key, "content-type": "application/json", accept: "application/json" };
+    let r = await fetch("https://api.brevo.com/v3/transactionalSMS/send", { method: "POST", headers: h, body: corps });
+    if (r.status === 404) r = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", { method: "POST", headers: h, body: corps });
+    ok = r.ok; reponse = (await r.text()).slice(0, 400);
+  }
+  await db.from("sms_log").insert({ cle: cle || null, tel: dest, texte, ok, reponse });
+  return { ok, raison: ok ? "" : reponse };
+}
+
+
+// ---------- e-mails (Brevo, gratuit jusqu'à 300 par jour) ----------
+const DORI_MAIL = "refletambre@outlook.be";
+const mailOk = (m: any) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(m || "").trim());
+const escH = (t: string) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" } as any)[c]);
+export async function envoyerEmail(to: string, sujet: string, texte: string, cle?: string) {
+  to = String(to || "").trim();
+  if (!mailOk(to) || !texte.trim()) return { ok: false, raison: "adresse e-mail ou texte vide" };
+  if (cle) {
+    const { data } = await db.from("sms_log").select("id").eq("cle", cle).maybeSingle();
+    if (data) return { ok: true, deja: true };
+  }
+  const key = Deno.env.get("BREVO_API_KEY");
+  let ok = false, reponse = "pas de clé Brevo";
+  if (key) {
+    const html = `<div style="font-family:Georgia,serif;max-width:520px;margin:auto;padding:24px;background:#FFF8EE;border-radius:16px;color:#2C211C">
+      <div style="font-size:26px;color:#C98A2B;font-style:italic;margin-bottom:12px">Reflet Ambré</div>
+      <div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;white-space:pre-line">${escH(texte)}</div>
+      <div style="font-family:Arial,sans-serif;font-size:12px;color:#8a7a70;margin-top:20px">Reflet Ambré · Promenade des Ours 18, 5300 Andenne · 0475 72 18 52 · refletambre.be</div></div>`;
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST", headers: { "api-key": key, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sender: { name: "Reflet Ambré", email: Deno.env.get("EMAIL_EXPEDITEUR") || DORI_MAIL },
+        replyTo: { email: DORI_MAIL, name: "Reflet Ambré" },
+        to: [{ email: to }], subject: sujet.slice(0, 150), textContent: texte.slice(0, 4000), htmlContent: html,
+      }),
+    });
+    ok = r.ok; reponse = (await r.text()).slice(0, 400);
+  }
+  await db.from("sms_log").insert({ cle: cle || null, tel: "mail:" + to, texte: sujet + " | " + texte.slice(0, 300), ok, reponse });
+  return { ok, raison: ok ? "" : reponse };
+}
+
+
+// ---------- WhatsApp gratuit pour Dori (CallMeBot) ----------
+export async function whatsappDori(S: any, texte: string) {
+  const key = Deno.env.get("CALLMEBOT_KEY");
+  if (!key) return { ok: false, raison: "pas de clé CallMeBot" };
+  const num = "+" + (telInter(S.notif?.tel || "0475 72 18 52") || "32475721852").replace(/^\+/, "");
+  try {
+    const r = await fetch(`https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(num)}&text=${encodeURIComponent(texte.slice(0, 900))}&apikey=${encodeURIComponent(key)}`);
+    const t = (await r.text()).slice(0, 300);
+    await db.from("sms_log").insert({ cle: null, tel: "wa:" + num, texte: texte.slice(0, 300), ok: r.ok, reponse: t });
+    return { ok: r.ok };
+  } catch (e) { return { ok: false, raison: String(e) }; }
+}
+
+
+// ---------- Notification gratuite sur le téléphone de Dori (application ntfy) ----------
+const NTFY_TOPIC = Deno.env.get("NTFY_TOPIC") || "refletambre-rdv-266d7113";
+const NTFY_TOKEN = Deno.env.get("NTFY_TOKEN") || "";
+const ntfyAuth = (): Record<string, string> => NTFY_TOKEN ? { "Authorization": "Bearer " + NTFY_TOKEN } : {};
+export async function notifDori(titre: string, texte: string) {
+  const essais: any[] = [];
+  // essai 1 : format JSON
+  try {
+    const r = await fetch("https://ntfy.sh/", {
+      method: "POST", headers: { "content-type": "application/json", ...ntfyAuth() },
+      body: JSON.stringify({ topic: NTFY_TOPIC, title: titre, message: texte, tags: ["ring"], priority: 4, click: "https://refletambre.be/#panel" }),
+    });
+    const t = (await r.text()).slice(0, 300);
+    essais.push({ essai: 1, statut: r.status, reponse: t });
+    if (r.ok) { console.log("ntfy ok", r.status); return { ok: true, essais }; }
+  } catch (e) { essais.push({ essai: 1, erreur: String(e) }); }
+  // essai 2 : format simple (texte)
+  try {
+    const r = await fetch("https://ntfy.sh/" + NTFY_TOPIC, {
+      method: "POST",
+      headers: { ...ntfyAuth(), "Title": "Reflet Ambre - Nouvelle demande de RDV", "Priority": "4", "Tags": "ring", "Click": "https://refletambre.be/#panel" },
+      body: titre + "\n" + texte,
+    });
+    const t = (await r.text()).slice(0, 300);
+    essais.push({ essai: 2, statut: r.status, reponse: t });
+    if (r.ok) { console.log("ntfy ok (essai 2)", r.status); return { ok: true, essais }; }
+  } catch (e) { essais.push({ essai: 2, erreur: String(e) }); }
+  console.error("ntfy ECHEC", JSON.stringify(essais));
+  return { ok: false, essais };
+}
+
+// ---------- Notification gratuite sur le téléphone de Dori (notification du navigateur) ----------
+async function vapid() {
+  let v: any = await reglage("vapid");
+  if (!v?.publicKey || !v?.privateKey) {
+    v = webpush.generateVAPIDKeys();
+    await db.from("reglages").upsert({ cle: "vapid", valeur: v, maj: new Date().toISOString() });
+  }
+  return v;
+}
+export async function pushDori(titre: string, texte: string) {
+  const abos: any[] = ((await reglage("push_abos")) as any[]) || [];
+  if (!abos.length) return { ok: false, raison: "aucun téléphone activé" };
+  const v = await vapid();
+  const garde: any[] = [], statuts: any[] = [];
+  let envoyes = 0;
+  for (const a of abos) {
+    try {
+      const d: any = webpush.generateRequestDetails(a, JSON.stringify({ titre, texte, url: "https://refletambre.be/#panel" }), {
+        vapidDetails: { subject: "mailto:refletambre@outlook.be", publicKey: v.publicKey, privateKey: v.privateKey },
+        TTL: 86400, urgency: "high",
+      });
+      const r = await fetch(d.endpoint, { method: "POST", headers: d.headers, body: d.body });
+      statuts.push(r.status);
+      if (r.status === 404 || r.status === 410) continue; // téléphone désabonné : on l'oublie
+      if (r.ok) envoyes++;
+    } catch (e) { statuts.push(String(e)); }
+    garde.push(a);
+  }
+  if (garde.length !== abos.length) await db.from("reglages").upsert({ cle: "push_abos", valeur: garde, maj: new Date().toISOString() });
+  console.log("push", JSON.stringify(statuts));
+  return { ok: envoyes > 0, envoyes, telephones: abos.length, statuts };
+}
+
+// ---------- connexion du panel ----------
+async function verifier(req: Request, body: any) {
+  const t = String(body.jeton || "");
+  const [p, sig] = t.split(".");
+  if (!p || !sig || (await hmac(p)) !== sig) return null;
+  const o = JSON.parse(atob(p));
+  if (o.exp < Date.now()) return null;
+  return o as { a: number; exp: number };
+}
+
+// ---------- données publiques pour le site ----------
+async function site() {
+  const S = (await panelS()) || {};
+  const auj = bruxelles().iso;
+  const { data: pris0 } = await db.from("rdv").select("date,heure,data").in("statut", ["attente", "confirme"]).gte("date", auj);
+  const pris = (pris0 || []).map((p: any) => ({ date: p.date, heure: p.heure, duree: duree(p.data?.type) }));
+  const { data: med } = await db.from("medias").select("*").order("date", { ascending: false });
+  const [volume, musiqueOn, musique, apropos] = await Promise.all(["volume", "musiqueOn", "musique", "apropos"].map(reglage));
+  const ap = apropos ? { ...(apropos as any) } : null;
+  if (ap?.photo) ap.photo = urlPublic(ap.photo);
+  return {
+    ok: true,
+    heures: (Array.isArray(S.heures) && S.heures.length) ? S.heures : HEURES,
+    heuresJour: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, heuresDuJour(S, d) || []])),
+    horaires: S.horaires || { 2: ["10:00", "18:30"], 3: ["10:00", "18:30"], 4: ["10:00", "18:30"], 5: ["10:00", "19:00"], 6: ["09:30", "17:00"], 0: null, 1: null },
+    fermes: S.fermes || [],
+    pris: pris || [],
+    medias: (med || []).map((m: any) => ({ id: m.id, type: m.type, cat: m.cat, haut: m.haut, legende: m.legende, date: m.date, url: urlPublic(m.chemin) })),
+    volume, musiqueOn, musique: musique ? urlPublic(musique as string) : null, apropos: ap,
+  };
+}
+
+async function reserver(req: Request, b: any) {
+  const qui = ip(req);
+  // numéro de test d'Atom : RDV illimités (pas de limite par numéro ni par connexion)
+  const TEL_TEST = ["32499374830"];
+  const testeur = TEL_TEST.includes(telInter(txt(b.tel, 30)));
+  if (!testeur && await trop("reserver", qui, 6, 60)) return erreur("Trop de demandes, réessayez plus tard ou appelez-nous au 0475 72 18 52.", 429);
+  const prenom = txt(b.prenom, 60), nom = txt(b.nom, 60), tel = txt(b.tel, 30), type = txt(b.type, 40);
+  const date = txt(b.date, 10), heure = txt(b.heure, 5), message = txt(b.message, 600), mariage = txt(b.mariage, 10);
+  const email = mailOk(b.email) ? txt(b.email, 120).trim() : "";
+  if (!prenom || !nom) return erreur("Prénom et nom obligatoires");
+  const ti = telInter(tel);
+  if (!ti) return erreur("Numéro de téléphone incorrect");
+  if (!TYPES.includes(type)) return erreur("Type de RDV inconnu");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(heure)) return erreur("Date ou heure incorrecte");
+  const auj = bruxelles().iso;
+  if (date <= auj || date > addJ(auj, 550)) return erreur("Cette date n'est pas disponible");
+  const S = (await panelS()) || {};
+  const heuresOk = heuresDuJour(S, jourSem(date)) || HEURES;
+  if (!heuresOk.includes(heure)) return erreur("Cette heure n'est pas disponible");
+  const hor = (S.horaires || {})[jourSem(date)];
+  if ((S.horaires && !hor) || (S.fermes || []).includes(date) || (hor && mnG(heure) + duree(type) > mnG(hor[1])))
+    return erreur("La boutique est fermée à ce moment-là");
+  const mn = (x: string) => { const [h, m] = String(x).split(":"); return (+h) * 60 + (+m); };
+  const { data: occ0 } = await db.from("rdv").select("heure,data").eq("date", date).in("statut", ["attente", "confirme"]);
+  const occ = (occ0 || []).filter((o: any) => mn(heure) < mn(o.heure) + duree(o.data?.type) && mn(o.heure) < mn(heure) + duree(type));
+  if (occ.length) return erreur("Oh, ce créneau vient d'être réservé ♡ Choisissez-en un autre.", 409);
+  const { count } = await db.from("rdv").select("id", { count: "exact", head: true }).eq("statut", "attente").eq("data->>tel", ti);
+  if (!testeur && (count || 0) >= 3) return erreur("Vous avez déjà des demandes en attente, Dori vous répond très vite ♡", 429);
+  await noter("reserver", qui);
+
+  // cliente : retrouvée par son numéro, sinon créée
+  const { data: cl } = await db.from("clientes").select("id,data").eq("tel", ti).limit(1);
+  let cid: number;
+  if (cl?.length) cid = cl[0].id;
+  else {
+    cid = newId();
+    await db.from("clientes").insert({ id: cid, tel: ti, data: { id: cid, prenom, nom, tel, email: email || "—", mariage, statut: "normal", note: "", notes: "", par: null, amendes: [] } });
+  }
+  const id = newId(), recu = Date.now();
+  const r = { id, cid, type, date, heure, statut: "attente", src: "site", message, recu, tel: ti, email };
+  const { error } = await db.from("rdv").insert({ id, cid, date, heure, statut: "attente", data: r, recu: new Date(recu).toISOString() });
+  if (error) return erreur("Erreur, réessayez dans un instant", 500);
+
+  // (plus de SMS payant à Dori : elle reçoit une notification sur son téléphone)
+  await pushDori(`💍 Nouvelle demande de RDV : ${prenom} ${nom}`, `${type}\n${fmtL(date)} à ${heure}\nTél : ${tel}\nTouchez pour ouvrir votre panel et valider.`);
+  if (S.notif?.waOn !== false) {
+    await whatsappDori(S, `💍 Reflet Ambré · Nouvelle demande de RDV\n${prenom} ${nom}\n${type}\n${fmtL(date)} à ${heure}\nTél : ${tel}\n\nValider : https://refletambre.be/#panel`);
+  }
+  const doriMail = mailOk(S.notif?.email) ? S.notif.email : DORI_MAIL;
+  if (S.notif?.mailOn !== false) {
+    await envoyerEmail(doriMail, `Nouvelle demande de RDV : ${prenom} ${nom}`,
+      `Bonjour Dori,\n\nNouvelle demande de rendez-vous sur votre site :\n\n${prenom} ${nom}\n${type}\n${fmtL(date)} à ${heure}\nTéléphone : ${tel}${email ? "\nE-mail : " + email : ""}${mariage ? "\nMariage : " + mariage : ""}${message ? "\nMessage : " + message : ""}\n\nOuvrez votre panel pour la valider : https://refletambre.be/#panel`, `notifmail-${id}`);
+  }
+  if (email) {
+    await envoyerEmail(email, "Votre demande de rendez-vous chez Reflet Ambré",
+      `Bonjour ${prenom},\n\nMerci pour votre demande ♡\n\n${type}\n${fmtL(date)} à ${heure}\n\nDori va la confirmer très vite. Vous recevrez un SMS et un e-mail de confirmation.\n\nÀ très vite,\nDori\nReflet Ambré · Promenade des Ours 18, Andenne · 0475 72 18 52`, `demmail-${id}`);
+  }
+  return rep({ ok: true });
+}
+
+// ---------- actions du panel ----------
+async function charger() {
+  const [{ data: C }, { data: R }, S] = await Promise.all([
+    db.from("clientes").select("data"),
+    db.from("rdv").select("data,recu").gte("date", addJ(bruxelles().iso, -366)),
+    panelS(),
+  ]);
+  return rep({ ok: true, C: (C || []).map((x: any) => x.data), R: (R || []).map((x: any) => ({ ...x.data, recu: x.data.recu || Date.parse(x.recu) })), S });
+}
+
+async function sync(b: any) {
+  const C = Array.isArray(b.clientes) ? b.clientes.slice(0, 500) : [];
+  const R = Array.isArray(b.rdv) ? b.rdv.slice(0, 500) : [];
+  if (C.length) {
+    const { error } = await db.from("clientes").upsert(C.map((c: any) => ({ id: Number(c.id), tel: telInter(c.tel) || null, data: c, maj: new Date().toISOString() })));
+    if (error) return erreur("clientes: " + error.message, 500);
+  }
+  for (const r of R) {
+    const id = Number(r.id);
+    const { data: ancien } = await db.from("rdv").select("date,heure").eq("id", id).maybeSingle();
+    const row: any = { id, cid: Number(r.cid), date: r.date, heure: r.heure, statut: r.statut, data: r, maj: new Date().toISOString() };
+    if (!ancien && r.recu) row.recu = new Date(r.recu).toISOString();
+    if (ancien && (ancien.date !== r.date || ancien.heure !== r.heure)) row.rappel_envoye = false;
+    const { error } = await db.from("rdv").upsert(row);
+    if (error) return erreur("rdv: " + error.message, 500);
+  }
+  if (Array.isArray(b.supprRdv) && b.supprRdv.length) await db.from("rdv").delete().in("id", b.supprRdv.map(Number));
+  if (Array.isArray(b.supprC) && b.supprC.length) await db.from("clientes").delete().in("id", b.supprC.map(Number));
+  if (b.S && typeof b.S === "object") await db.from("reglages").upsert({ cle: "panel", valeur: b.S, maj: new Date().toISOString() });
+  return rep({ ok: true });
+}
+
+async function emails(b: any) {
+  const l = Array.isArray(b.envois) ? b.envois.slice(0, 200) : [];
+  let ok = 0, ko = 0, raison = "";
+  for (const e of l) {
+    const r = await envoyerEmail(txt(e.to, 120), txt(e.sujet, 150), txt(e.texte, 4000), e.cle ? txt(e.cle, 120) : undefined);
+    if (r.ok) ok++; else { ko++; raison = r.raison || raison; }
+  }
+  return rep({ ok: true, envoyes: ok, rates: ko, raison });
+}
+async function sms(b: any) {
+  const l = Array.isArray(b.envois) ? b.envois.slice(0, 400) : [];
+  let ok = 0, ko = 0, raison = "";
+  for (const e of l) {
+    const r = await envoyerSMS(txt(e.tel, 30), txt(e.texte, 600), e.cle ? txt(e.cle, 120) : undefined);
+    if (r.ok) ok++; else { ko++; raison = r.raison || raison; }
+  }
+  return rep({ ok: true, envoyes: ok, rates: ko, raison });
+}
+
+// ---------- tâches automatiques (toutes les heures) ----------
+function paques(y: number) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3),
+    h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 114);
+  const mo = Math.floor((h + l - 7 * m + 114) / 31), j = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${y}-${String(mo).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
+}
+const nDim = (y: number, mo: number, n: number) => {
+  const d = new Date(Date.UTC(y, mo, 1)); const off = (7 - d.getUTCDay()) % 7; d.setUTCDate(1 + off + 7 * (n - 1)); return d.toISOString().slice(0, 10);
+};
+const p2 = (n: number) => String(n).padStart(2, "0");
+const FETES: Record<string, (y: number) => string> = {
+  nouvelan: (y) => `${y}-01-01`, valentin: (y) => `${y}-02-14`, femme: (y) => `${y}-03-08`, paques,
+  meres: (y) => nDim(y, 4, 2), peres: (y) => nDim(y, 5, 2), nationale: (y) => `${y}-07-21`, nicolas: (y) => `${y}-12-06`, noel: (y) => `${y}-12-25`,
+};
+
+async function taches() {
+  const S = (await panelS()) || {};
+  const { iso: auj, heure, an } = bruxelles();
+  const fait: string[] = [];
+  const auto = S.auto || {};
+  const { data: CL } = await db.from("clientes").select("data");
+  const clientes = (CL || []).map((x: any) => x.data).filter((c: any) => telInter(c.tel));
+  const perso = (t: string, c: any, extra: Record<string, string> = {}) =>
+    Object.entries({ prenom: c.prenom || "", annee: String(an), code: c.tel || "", ...extra }).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, v), t);
+
+  // 1. Relance de Dori : demandes sans réponse depuis X heures
+  if (S.relance?.on !== false) {
+    const h = Number(S.relance?.h || 24);
+    const { data: att } = await db.from("rdv").select("id,data").eq("statut", "attente").eq("relance_envoyee", false).lt("recu", new Date(Date.now() - h * 3600e3).toISOString());
+    if (att?.length) {
+      const n = att.length;
+      const r = await pushDori(`⏰ ${n} demande${n > 1 ? "s attendent" : " attend"} votre réponse`, `Depuis plus de ${h} h. Touchez pour ouvrir votre panel et valider ♡`);
+      if (r.ok) await db.from("rdv").update({ relance_envoyee: true }).in("id", att.map((x: any) => x.id));
+      fait.push(`relance:${n}`);
+    }
+  }
+  // 2. Rappel la veille à 18:00
+  if (SMS_AUTO && heure >= 18 && auto.rappel?.on !== false) {
+    const demain = addJ(auj, 1);
+    const { data: l } = await db.from("rdv").select("id,cid,heure,data").eq("date", demain).eq("statut", "confirme").eq("rappel_envoye", false);
+    for (const r of l || []) {
+      const c = clientes.find((x: any) => Number(x.id) === Number(r.cid));
+      if (!c) continue;
+      const t = perso(auto.rappel?.txt || "Bonjour {prenom}, petit rappel : votre RDV chez Reflet Ambré est demain à {heure}. Un empêchement ? 0475 72 18 52. À demain ♡ Dori", c, { heure: r.heure });
+      const s = await envoyerSMS(c.tel, t, `rappel-${r.id}-${demain}`);
+      if (s.ok) await db.from("rdv").update({ rappel_envoye: true }).eq("id", r.id);
+    }
+    fait.push("rappels");
+  }
+  // 3. Fêtes de Belgique à 10:00
+  const dest = clientes.filter((c: any) => !(c.statut === "mauvais" && !S.autoBad));
+  if (SMS_AUTO && heure >= 10) {
+    for (const [k, q] of Object.entries(FETES)) {
+      if (q(an) !== auj || !auto[k]?.on || !auto[k]?.txt) continue;
+      for (const c of dest) await envoyerSMS(c.tel, perso(auto[k].txt, c), `${k}-${an}-${c.id}`);
+      fait.push(k);
+    }
+  }
+  // 4. Pour chaque cliente : J-30, jour J (8:00), anniversaire de mariage
+  for (const c of (SMS_AUTO ? dest : [])) {
+    const m = c.mariage;
+    if (!m || !/^\d{4}-\d{2}-\d{2}$/.test(m)) continue;
+    if (heure >= 10 && auto.j30?.on && addJ(m, -30) === auj) await envoyerSMS(c.tel, perso(auto.j30.txt, c), `j30-${c.id}-${m}`);
+    if (heure >= 8 && auto.jourj?.on && m === auj) await envoyerSMS(c.tel, perso(auto.jourj.txt, c), `jourj-${c.id}-${m}`);
+    if (heure >= 10 && auto.anniv?.on && m < auj && m.slice(5) === auj.slice(5)) await envoyerSMS(c.tel, perso(auto.anniv.txt, c), `anniv-${c.id}-${an}`);
+  }
+  // 5. Ménage : RDV de plus d'un an, vieux essais
+  await db.from("rdv").delete().lt("date", addJ(auj, -366));
+  await db.from("tentatives").delete().lt("quand", new Date(Date.now() - 3 * 864e5).toISOString());
+  return rep({ ok: true, fait });
+}
+
+// ---------- aiguillage ----------
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  try {
+    const u = new URL(req.url);
+    const b: any = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const f = b.f || u.searchParams.get("f") || "site";
+
+    if (f === "site") return rep(await site());
+    if (f === "reserver") return await reserver(req, b);
+    if (f === "test_notif") {
+      const qui = ip(req);
+      if (await trop("test_notif", qui, 5, 60)) return erreur("Trop d'essais", 429);
+      await noter("test_notif", qui);
+      return rep(await pushDori("Test du serveur Reflet Ambré", "Si Dori voit ce message, les notifications marchent ♡"));
+    }
+    if (f === "taches") {
+      if ((b.secret || u.searchParams.get("secret")) !== (await secret("taches"))) return erreur("non", 403);
+      return await taches();
+    }
+    if (f === "login") {
+      const qui = ip(req);
+      if (await trop("login", qui, 8, 15)) return erreur("Trop d'essais. Réessayez dans 15 minutes.", 429);
+      const S = await panelS();
+      const code = txt(b.code, 12);
+      const acces = S?.acces?.length ? S.acces : [{ id: 1, nom: "Dori", code: CODE_DEPART, role: "tout" }];
+      const ac = acces.find((a: any) => String(a.code) === code);
+      if (!ac) { await noter("login", qui); return erreur("Code incorrect", 401); }
+      const p = btoa(JSON.stringify({ a: ac.id, exp: Date.now() + 30 * 864e5 }));
+      return rep({ ok: true, jeton: `${p}.${await hmac(p)}`, acces: { id: ac.id, nom: ac.nom, role: ac.role }, codeDepart: code === CODE_DEPART });
+    }
+
+    // tout le reste : il faut être connecté
+    const qui = await verifier(req, b);
+    if (!qui) return erreur("Session expirée, retapez votre code", 401);
+    if (f === "charger") return await charger();
+    if (f === "push_cle") return rep({ ok: true, cle: (await vapid()).publicKey });
+    if (f === "push_abo") {
+      const a = b.abo || {};
+      if (typeof a.endpoint !== "string" || !a.endpoint.startsWith("https://") || !a.keys?.p256dh || !a.keys?.auth) return erreur("abonnement incorrect");
+      const abo = { endpoint: txt(a.endpoint, 600), keys: { p256dh: txt(a.keys.p256dh, 200), auth: txt(a.keys.auth, 100) } };
+      const l: any[] = (((await reglage("push_abos")) as any[]) || []).filter((x: any) => x.endpoint !== abo.endpoint);
+      l.push(abo);
+      await db.from("reglages").upsert({ cle: "push_abos", valeur: l.slice(-10), maj: new Date().toISOString() });
+      return rep({ ok: true, telephones: Math.min(l.length, 10) });
+    }
+    if (f === "push_test") return rep(await pushDori("🔔 Test Reflet Ambré", "Les notifications marchent sur ce téléphone ♡"));
+    if (f === "sync") return await sync(b);
+    if (f === "sms") return await sms(b);
+    if (f === "email") return await emails(b);
+    if (f === "reglage") {
+      const cle = txt(b.cle, 30);
+      if (!["volume", "musiqueOn", "musique", "apropos"].includes(cle)) return erreur("réglage inconnu");
+      await db.from("reglages").upsert({ cle, valeur: b.valeur ?? null, maj: new Date().toISOString() });
+      return rep({ ok: true });
+    }
+    if (f === "envoi") { // adresse pour déposer une photo / vidéo / musique directement dans le stockage
+      const ext = txt(b.ext, 5).replace(/[^a-z0-9]/gi, "").toLowerCase() || "bin";
+      const chemin = `${txt(b.dossier, 20).replace(/[^a-z]/g, "") || "medias"}/${newId()}.${ext}`;
+      const { data, error } = await db.storage.from("site").createSignedUploadUrl(chemin);
+      if (error) return erreur(error.message, 500);
+      return rep({ ok: true, chemin, envoi: data.signedUrl, url: urlPublic(chemin) });
+    }
+    if (f === "media_ajout") {
+      const m = b.media || {};
+      const { error } = await db.from("medias").upsert({ id: txt(m.id, 40), type: m.type === "video" ? "video" : "image", cat: txt(m.cat, 30), haut: !!m.haut, legende: txt(m.legende, 120), chemin: txt(m.chemin, 120), date: Number(m.date) || Date.now() });
+      return error ? erreur(error.message, 500) : rep({ ok: true });
+    }
+    if (f === "media_suppr") {
+      const { data } = await db.from("medias").select("chemin").eq("id", txt(b.id, 40)).maybeSingle();
+      if (data) { await db.storage.from("site").remove([data.chemin]); await db.from("medias").delete().eq("id", txt(b.id, 40)); }
+      return rep({ ok: true });
+    }
+    return erreur("action inconnue");
+  } catch (e) {
+    console.error(e);
+    return erreur("Erreur serveur", 500);
+  }
+});
