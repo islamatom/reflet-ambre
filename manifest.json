@@ -1,0 +1,24 @@
+{
+ "name": "Reflet Ambré",
+ "short_name": "Reflet Ambré",
+ "start_url": "/#panel",
+ "scope": "/",
+ "display": "standalone",
+ "background_color": "#B0757A",
+ "theme_color": "#B0757A",
+ "lang": "fr",
+ "icons": [
+  {
+   "src": "/icone-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icone-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  }
+ ]
+}
