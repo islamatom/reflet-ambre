@@ -1252,6 +1252,7 @@ nav.tabs button.on::before{content:"";position:absolute;top:-9px;width:28px;heig
 .fact-ech{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--blush2);font-size:13.5px}
 .fact-cd{font-weight:700;color:var(--rose-d)}.fact-ech.bien .fact-cd{color:#B7791F}.fact-ech.ret{background:#FDECEA;border-color:#E9B4AC}.fact-ech.ret .fact-cd{color:#B4483F}
 #factBand.ret{border-color:#B4483F;background:#FDECEA}
+.fact-fr{margin:-6px 0 10px;font-size:12.5px;color:#B4483F;font-weight:600}.fact-rap{margin:0 0 10px;padding:8px 10px;border-radius:10px;background:#FDECEA;color:#B4483F;font-size:13px;font-weight:600}
 .fact-p{font-size:12.5px;color:var(--ink2);margin-top:8px;text-align:center}
 .fact-l{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--blush2)}.fact-l:last-of-type{border-bottom:0}
 .fact-l span:first-child{flex:1}.fact-ok{font-size:12.5px;color:var(--ok);font-weight:600}
@@ -2209,6 +2210,8 @@ const aPayer=()=>FACT.liste.filter(f=>f.statut!=='payé');
 function factureHTML(){const a=aPayer();if(!a.length)return'';const f=a[a.length-1],n=a.length;
   return `<div class="card fact-card"><div class="fact-h"><span class="fact-ic">🧾</span><div><small>FACTURE ${n>1?'· '+n+' MOIS À PAYER':'DU MOIS'}</small><b>${n>1?a.map(x=>moisNom(x.mois)).join(', '):moisNom(f.mois)}</b></div></div>
    <div class="fact-m"><b>${eur2(a.reduce((t,x)=>t+(+x.montant||0),0))}</b><span>TVA comprise · site + panel Atom</span></div>
+   ${a.some(x=>x.frais)?`<p class="fact-fr">dont ${eur2(a.reduce((t,x)=>t+(+x.frais||0),0))} de frais de retard</p>`:''}
+   ${a.some(x=>x.rappel)?`<p class="fact-rap">🔔 Rappel d'Atom : merci de régler votre facture.</p>`:''}
    ${echeHTML(a[0])}
    ${LS.get('ra_fact_ouv_'+f.id)?`<div class="fact-att">⏳ Paiement ouvert le ${LS.get('ra_fact_ouv_'+f.id)}. Atom le confirme dès qu'il le reçoit.</div>`:''}
    <button class="b b-rose fact-go" onclick="payerFacture('${f.id}')">💳 ${LS.get('ra_fact_ouv_'+f.id)?'Rouvrir le paiement':'Payer maintenant'}</button>
