@@ -2213,7 +2213,11 @@ if(location.hash==='#panel')ouvrirPanel();
   document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('a[href="#confidentialite"]');if(a){e.preventDefault();ouvrirLegal()}});
   if(location.hash==='#confidentialite')ouvrirLegal();
   let vu=false;try{vu=localStorage.getItem('ra_info_cookies')==='1'}catch(e){}
-  if(!vu&&location.hash!=='#panel')setTimeout(()=>ck.classList.add('on'),2500);
+  // le bandeau cookies n'apparaît qu'APRÈS l'animation d'intro (ou si on la passe)
+  if(!vu&&location.hash!=='#panel'){const intro=document.getElementById('intro');let parti=false;
+    const montrer=()=>{if(parti)return;parti=true;setTimeout(()=>ck.classList.add('on'),1200)};
+    const fini=()=>!intro||intro.classList.contains('done')||getComputedStyle(intro).display==='none'||getComputedStyle(intro).visibility==='hidden';
+    if(fini())montrer();else{new MutationObserver(()=>{if(fini())montrer()}).observe(intro,{attributes:true});const t=setInterval(()=>{if(fini()){clearInterval(t);montrer()}},700)}}
   document.getElementById('infoCkOk').onclick=()=>{ck.classList.remove('on');try{localStorage.setItem('ra_info_cookies','1')}catch(e){}};
 })();
 </script>
