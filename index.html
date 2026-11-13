@@ -1247,6 +1247,8 @@ nav.tabs button.on::before{content:"";position:absolute;top:-9px;width:28px;heig
 .abo-mini{display:flex;flex-direction:column;gap:8px;padding:14px 16px}.abo-mini b{font-size:16px}.abo-mini span{display:block;font-size:12.5px;color:var(--ink2)}
 .abo-mini-l{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid var(--blush2);padding-top:8px}
 .abo-mini-l small{font-size:12.5px;color:var(--ink2)}.abo-ok{color:var(--ok)!important;font-weight:600;font-size:13.5px!important}.abo-ko{color:#B7791F!important;font-weight:600;font-size:13.5px!important}
+#factBand{position:sticky;top:0;z-index:35;display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px;border-radius:14px;background:linear-gradient(135deg,#fff,var(--blush));border:2px solid var(--rose);font-size:14px}
+#factBand button{flex:none;border:0;border-radius:99px;padding:8px 14px;background:var(--rose);color:#fff;font-weight:600;font-size:13.5px}
 .fact-p{font-size:12.5px;color:var(--ink2);margin-top:8px;text-align:center}
 .fact-l{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--blush2)}.fact-l:last-of-type{border-bottom:0}
 .fact-l span:first-child{flex:1}.fact-ok{font-size:12.5px;color:var(--ok);font-weight:600}
@@ -2224,7 +2226,14 @@ const _aboCarte=aboCarte;
 aboCarte=function(compact){if(!FACT.mensuel)return _aboCarte(compact);if(compact)return'';
   const fin=aboFin(),a=aPayer(),proch=(()=>{const d=new Date(TODAY);if(d.getDate()>=FACT.jour)d.setMonth(d.getMonth()+1);d.setDate(FACT.jour);return d})();
   return `<div class="sous">Mon abonnement</div><div class="card abo-mini"><div><b>🗓 ${eur2(FACT.ttc)} par mois</b><span>TVA comprise · site + panel Atom</span></div>
-   <div class="abo-mini-l">${a.length?`<span class="abo-ko">⏳ ${a.map(x=>moisNom(x.mois)).join(', ')} à payer</span>`:`<span class="abo-ok">✅ Payé jusqu'au ${fin.getDate()} ${MOIS[fin.getMonth()]}</span>`}<small>Prochaine facture le ${proch.getDate()} ${MOIS[proch.getMonth()]}</small></div></div>`};
+   <div class="abo-mini-l">${a.length?`<span class="abo-ko">⏳ ${a.map(x=>moisNom(x.mois)).join(', ')} à payer</span>`:`<span class="abo-ok">✅ Actif</span>`}<small>Prochaine facture le ${proch.getDate()} ${MOIS[proch.getMonth()]}</small></div></div>`};
+/* bandeau épinglé en haut de toutes les pages tant que la facture n'est pas payée */
+function bandeauFacture(){const m=document.getElementById('main');if(!m)return;let b=document.getElementById('factBand');const a=aPayer();
+  if(!a.length||V==='jour'||V==='reglages'){if(b)b.remove();return}
+  const f=a[a.length-1];if(!b||b.parentNode!==m){b&&b.remove();b=document.createElement('div');b.id='factBand';m.prepend(b)}
+  b.innerHTML=`<span>🧾 Facture de ${moisNom(f.mois)} · <b>${eur2(a.reduce((t,x)=>t+(+x.montant||0),0))}</b></span><button onclick="payerFacture('${f.id}')">💳 Payer</button>`}
+new MutationObserver(()=>{const b=document.getElementById('factBand');if(!b||!b.isConnected)bandeauFacture()}).observe(document.body,{childList:true,subtree:true});
+setInterval(bandeauFacture,1500);
 </__S__script>
 
 <script>
