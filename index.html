@@ -1249,6 +1249,9 @@ nav.tabs button.on::before{content:"";position:absolute;top:-9px;width:28px;heig
 .abo-mini-l small{font-size:12.5px;color:var(--ink2)}.abo-ok{color:var(--ok)!important;font-weight:600;font-size:13.5px!important}.abo-ko{color:#B7791F!important;font-weight:600;font-size:13.5px!important}
 #factBand{position:sticky;top:0;z-index:35;display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px;border-radius:14px;background:linear-gradient(135deg,#fff,var(--blush));border:2px solid var(--rose);font-size:14px}
 #factBand button{flex:none;border:0;border-radius:99px;padding:8px 14px;background:var(--rose);color:#fff;font-weight:600;font-size:13.5px}
+.fact-ech{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid var(--blush2);font-size:13.5px}
+.fact-cd{font-weight:700;color:var(--rose-d)}.fact-ech.bien .fact-cd{color:#B7791F}.fact-ech.ret{background:#FDECEA;border-color:#E9B4AC}.fact-ech.ret .fact-cd{color:#B4483F}
+#factBand.ret{border-color:#B4483F;background:#FDECEA}
 .fact-p{font-size:12.5px;color:var(--ink2);margin-top:8px;text-align:center}
 .fact-l{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--blush2)}.fact-l:last-of-type{border-bottom:0}
 .fact-l span:first-child{flex:1}.fact-ok{font-size:12.5px;color:var(--ok);font-weight:600}
@@ -2198,15 +2201,20 @@ async function chargerFactures(){try{const e=ATOMLIEN.api?await atomRpc('abo_eta
   if(ATOMLIEN.api&&aPayer().length){try{appliquerEtat(await atomFn({action:'verifier'}))}catch(e){}}
   if(typeof V!=='undefined'&&(V==='jour'||V==='reglages')){try{V==='jour'?vJour():vReglages()}catch(e){}}
   const a=aPayer();if(a.length){const k='ra_fact_vu_'+a[0].mois;if(!LS.get(k)){LS.set(k,1);setTimeout(()=>toast('🧾 Votre facture de '+moisNom(a[0].mois)+' est arrivée : '+eur2(a[0].montant)+' TVAC'),1500)}}}
+const echeance=f=>{const d=new Date((f.date||f.mois+'-02')+'T12:00:00');d.setDate(d.getDate()+10);return d};
+const joursRestants=f=>{const t=new Date();t.setHours(12,0,0,0);return Math.round((echeance(f)-t)/864e5)};
+function echeHTML(f){const e=echeance(f),j=joursRestants(f);const txt=j>1?'encore '+j+' jours':j===1?'demain':j===0?"aujourd'hui":'en retard de '+(-j)+' jour'+(j<-1?'s':'');
+  return `<div class="fact-ech ${j<0?'ret':j<=3?'bien':''}"><span>📅 À payer avant le <b>${e.getDate()} ${MOIS[e.getMonth()]}</b></span><span class="fact-cd">⏳ ${txt}</span></div>`}
 const aPayer=()=>FACT.liste.filter(f=>f.statut!=='payé');
 function factureHTML(){const a=aPayer();if(!a.length)return'';const f=a[a.length-1],n=a.length;
   return `<div class="card fact-card"><div class="fact-h"><span class="fact-ic">🧾</span><div><small>FACTURE ${n>1?'· '+n+' MOIS À PAYER':'DU MOIS'}</small><b>${n>1?a.map(x=>moisNom(x.mois)).join(', '):moisNom(f.mois)}</b></div></div>
    <div class="fact-m"><b>${eur2(a.reduce((t,x)=>t+(+x.montant||0),0))}</b><span>TVA comprise · site + panel Atom</span></div>
+   ${echeHTML(a[0])}
    ${LS.get('ra_fact_ouv_'+f.id)?`<div class="fact-att">⏳ Paiement ouvert le ${LS.get('ra_fact_ouv_'+f.id)}. Atom le confirme dès qu'il le reçoit.</div>`:''}
    <button class="b b-rose fact-go" onclick="payerFacture('${f.id}')">💳 ${LS.get('ra_fact_ouv_'+f.id)?'Rouvrir le paiement':'Payer maintenant'}</button>
-   <p class="fact-p">Paiement sécurisé par SumUp. Dès que c'est payé, <b>+1 mois</b> est ajouté à votre compteur.</p></div>`}
+   </div>`}
 function factListeHTML(){if(!FACT.liste.length)return'';
-  return `<div class="sous">Mes factures</div><div class="card">${FACT.liste.slice(0,12).map(f=>`<div class="fact-l"><span>🧾 ${moisNom(f.mois)}</span><b>${eur2(f.montant)}</b>${f.statut==='payé'?`<span class="fact-ok">✅ Payée${f.payeLe?' le '+(+f.payeLe.slice(8))+' '+MOIS[+f.payeLe.slice(5,7)-1]:''}</span>`:`<button class="fact-pay" onclick="payerFacture('${f.id}')">💳 Payer</button>`}</div>`).join('')}
+  return `<div class="sous">Mes factures</div><div class="card">${FACT.liste.slice(0,12).map(f=>`<div class="fact-l"><span>🧾 ${moisNom(f.mois)}</span><b>${eur2(f.montant)}</b>${f.statut==='payé'?`<span class="fact-ok">✅ Payée${f.payeLe?' le '+(+f.payeLe.slice(8))+' '+MOIS[+f.payeLe.slice(5,7)-1]:''}</span>`:`<span style="font-size:12px;color:var(--ink2)">avant le ${echeance(f).getDate()} ${MOIS[echeance(f).getMonth()]}</span><button class="fact-pay" onclick="payerFacture('${f.id}')">💳 Payer</button>`}</div>`).join('')}
    <p style="font-size:12px;color:var(--ink2);margin-top:8px">${eur2(FACT.ttc)} TVA comprise, chaque mois le ${FACT.jour}. Une question ? Atom : 0499 37 48 30</p></div>`}
 async function payerFacture(id){const f=FACT.liste.find(x=>x.id===id);if(!f)return;
   const lien=()=>{window.open(ATOMLIEN.sumup,'_blank','noopener');const d=new Date();LS.set('ra_fact_ouv_'+id,d.getDate()+' '+MOIS[d.getMonth()]);setTimeout(()=>{toast('Merci ! Atom confirme votre paiement dès réception ♡');V==='jour'?vJour():vReglages()},400)};
@@ -2231,7 +2239,7 @@ aboCarte=function(compact){if(!FACT.mensuel)return _aboCarte(compact);if(compact
 function bandeauFacture(){const m=document.getElementById('main');if(!m)return;let b=document.getElementById('factBand');const a=aPayer();
   if(!a.length||V==='jour'||V==='reglages'){if(b)b.remove();return}
   const f=a[a.length-1];if(!b||b.parentNode!==m){b&&b.remove();b=document.createElement('div');b.id='factBand';m.prepend(b)}
-  b.innerHTML=`<span>🧾 Facture de ${moisNom(f.mois)} · <b>${eur2(a.reduce((t,x)=>t+(+x.montant||0),0))}</b></span><button onclick="payerFacture('${f.id}')">💳 Payer</button>`}
+  const j=joursRestants(a[0]);b.classList.toggle('ret',j<0);b.innerHTML=`<span>🧾 ${moisNom(f.mois)} · <b>${eur2(a.reduce((t,x)=>t+(+x.montant||0),0))}</b> · ${j<0?'en retard':j===0?"aujourd'hui":'J-'+j}</span><button onclick="payerFacture('${f.id}')">💳 Payer</button>`}
 new MutationObserver(()=>{const b=document.getElementById('factBand');if(!b||!b.isConnected)bandeauFacture()}).observe(document.body,{childList:true,subtree:true});
 setInterval(bandeauFacture,1500);
 </__S__script>
@@ -2243,7 +2251,7 @@ function setSkin(k){if(!SKINS[k])k='reflet';document.documentElement.dataset.ski
 function skinsHTML(){const cur=document.documentElement.dataset.skin||'reflet';return `<div class="sous">🎨 Thème du panel</div><div class="card"><div class="skins">${Object.entries(SKINS).map(([k,[e,n,c]])=>`<button class="skin ${k===cur?'on':''}" onclick="setSkin('${k}')"><span class="em">${e}</span>${n}<span class="sw">${c.map(x=>`<i style="background:${x}"></i>`).join('')}</span></button>`).join('')}</div><p style="font-size:12px;color:var(--ink2);margin-top:8px">Le choix reste enregistré sur ce téléphone.</p></div>`}
 (function(){const k=LS.get('ra_skin');document.documentElement.dataset.skin=SKINS[k]?k:'reflet'})();
 </__S__script>
-<script>window.ROBOT_ATOM={api:"https://ckepnrivozhjmquzcrfa.supabase.co",anon:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrZXBucml2b3poam1xdXpjcmZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNjYxNTIsImV4cCI6MjEwOTc0MjE1Mn0._f2kMIaVl2Wp9be_oP7Alo3Tw2NbkpEco_eO98xigIQ",cle:"ra-er2tmC6IJDjW_fCIsG5-Ylis",nom:"Dori",gratuit:false,cote:'gauche',bas:96,visible:()=>{const l=document.getElementById('login');return !l||l.classList.contains('out')}};</__S__script>
+<script>window.ROBOT_ATOM={api:"https://ckepnrivozhjmquzcrfa.supabase.co",anon:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrZXBucml2b3poam1xdXpjcmZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNjYxNTIsImV4cCI6MjEwOTc0MjE1Mn0._f2kMIaVl2Wp9be_oP7Alo3Tw2NbkpEco_eO98xigIQ",cle:"ra-er2tmC6IJDjW_fCIsG5-Ylis",nom:"Dori",gratuit:false,cote:'gauche',bas:96,inquiet:()=>typeof aPayer==='function'&&aPayer().some(f=>joursRestants(f)<0),visible:()=>{const l=document.getElementById('login');return !l||l.classList.contains('out')}};</__S__script>
 <script src="https://islamatom.github.io/mes-projet/js/robot-atom.js" defer></__S__script>
 </body>
 </html>
