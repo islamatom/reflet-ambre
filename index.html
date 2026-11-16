@@ -2184,7 +2184,7 @@ function hjAjout(j){const v=$('#hj'+j).value;if(!v)return;S.heuresJour=JSON.pars
 /* ================= FACTURE MENSUELLE ATOM (55 € TVAC le 2 du mois, paiement SumUp) ================= */
 // Les factures et le compteur viennent du panel d'Atom. Laisser api vide = aperçu (démo).
 const ATOMLIEN={api:"https://ckepnrivozhjmquzcrfa.supabase.co",anon:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrZXBucml2b3poam1xdXpjcmZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNjYxNTIsImV4cCI6MjEwOTc0MjE1Mn0._f2kMIaVl2Wp9be_oP7Alo3Tw2NbkpEco_eO98xigIQ",cle:'ra-er2tmC6IJDjW_fCIsG5-Ylis',sumup:'https://pay.sumup.com/b2c/QDUUO8PZ'};
-let FACT={liste:[],ttc:55,jour:2,charge:false,mensuel:false};
+let FACT={liste:[],ttc:55,jour:2,charge:false,mensuel:true}; // Dori paie au mois : plus jamais le compteur d'un an
 const moisNom=m=>{const [y,mm]=m.split('-');return MOIS[+mm-1]+' '+y};
 const eur2=n=>(Math.round(n*100)/100).toLocaleString('fr-BE',{minimumFractionDigits:0,maximumFractionDigits:2})+' €';
 async function atomRpc(fn,body){const r=await fetch(ATOMLIEN.api+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:ATOMLIEN.anon,Authorization:'Bearer '+ATOMLIEN.anon,'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error('atom');return r.json()}
@@ -2192,7 +2192,7 @@ async function atomFn(body){const r=await fetch(ATOMLIEN.api+'/functions/v1/sumu
 function appliquerEtat(e){if(!e)return;if(e.debut)ABO.debut=e.debut;if(e.mois!=null)ABO.mois=+e.mois;
   FACT.liste=(e.factures||[]).slice().sort((a,b)=>b.mois.localeCompare(a.mois));if(e.ttc){FACT.ttc=+e.ttc;FACT.mensuel=true}if(e.jour)FACT.jour=+e.jour;FACT.charge=true}
 function factDemo(){const d=new Date(),m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),p=new Date(d.getFullYear(),d.getMonth()-1,1),pm=p.getFullYear()+'-'+String(p.getMonth()+1).padStart(2,'0');
-  return LS.get('ra_fact_demo')||{debut:'2026-11-06',mois:1,ttc:55,jour:2,factures:[{id:'f'+m,mois:m,montant:55,statut:'à payer',date:m+'-02'},{id:'f'+pm,mois:pm,montant:55,statut:'payé',date:pm+'-02',payeLe:pm+'-03',mode:'SumUp'}]}}
+  return LS.get('ra_fact_demo2')||{debut:'2026-11-06',mois:1,ttc:55,jour:2,factures:[]}}
 async function chargerFactures(){try{const e=ATOMLIEN.api?await atomRpc('abo_etat',{p_cle:ATOMLIEN.cle}):factDemo();appliquerEtat(e)}catch(e){}
   if(ATOMLIEN.api&&aPayer().length){try{appliquerEtat(await atomFn({action:'verifier'}))}catch(e){}}
   if(typeof V!=='undefined'&&(V==='jour'||V==='reglages')){try{V==='jour'?vJour():vReglages()}catch(e){}}
