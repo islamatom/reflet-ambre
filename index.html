@@ -913,6 +913,7 @@ function ding(type){try{_actx=_actx||new (window.AudioContext||window.webkitAudi
 // ---------- L'animation ----------
 const wow=document.getElementById('wow');
 document.getElementById('confirm').onclick=async()=>{
+  if(LIVE&&(!R.date||isOff(R.date))){alert('La boutique est fermée ce jour-là. Choisissez un autre jour ♡');R.date=null;R.slot=null;drawCal();check2();go(2);return}
   if(LIVE){const bt=document.getElementById('confirm');if(bt.disabled)return;bt.disabled=true;const old=bt.textContent;bt.textContent='Envoi…';
     let res=null;try{res=await fetch(RA_API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({f:'reserver',prenom:F[0].value.trim(),nom:F[1].value.trim(),tel:F[2].value.trim(),email:F[3].value.trim(),
       mariage:document.getElementById('fMariage').value,type:R.type,date:isoD(R.date),heure:R.slot,message:document.getElementById('fMsg').value.trim()})}).then(r=>r.json())}catch(e){}
@@ -1394,6 +1395,24 @@ function rjSet(j,k,v){S.rdvJour=JSON.parse(JSON.stringify(S.rdvJour||RDVJ_DEF));
 
 const HEURES=['10:00','11:30','13:30','15:00','16:30','18:00'];
 // prochain jour ouvert (mar-sam) à partir de n jours
+const jourFerme=ds=>{if(!ds)return true;const d=parse(ds);return !S.horaires[d.getDay()]||(S.fermes||[]).includes(ds)};
+// RDV encore actifs posés sur un jour fermé (à déplacer)
+const rdvJourFerme=()=>R.filter(r=>r.date>=T&&(r.statut==='confirme'||r.statut==='attente')&&jourFerme(r.date)).sort((a,b)=>(a.date+a.heure).localeCompare(b.date+b.heure));
+// Eva prévient Dori : RDV posés sur un jour fermé
+function evaFermesHTML(jf){return `<div class="card" style="border:1.5px solid var(--bad);background:var(--badbg);margin-bottom:12px;font-size:14px;line-height:1.5"><div style="display:flex;gap:10px;align-items:center"><img src="https://islamatom.github.io/mes-projet/img/eva-inquiet.png" alt="" style="width:46px;height:46px;object-fit:contain"><div><b>Eva : Dori, ${jf.length} RDV ${jf.length>1?'tombent':'tombe'} un jour où la boutique est fermée</b><br><small style="color:var(--ink2)">Pardon Dori, ça n'aurait pas dû arriver. C'est corrigé : plus aucun RDV ne pourra être pris un jour fermé. Touchez un RDV pour le déplacer, la cliente reçoit la nouvelle date ♡</small></div></div>${jf.map(r=>{const c=getC(r.cid)||{};const pr=evaPropose(r);return `<div style="padding:8px 0;border-top:1px solid var(--blush2);margin-top:6px"><div onclick="voirRdv(${r.id})" style="cursor:pointer"><b>${fmtL(r.date)} · ${r.heure}</b> — ${esc(c.prenom||'')} ${esc(c.nom||'')} · ${esc(c.tel||'')} <span style="opacity:.6">›</span></div>${pr?`<button class="b b-rose b-sm" style="margin-top:6px" onclick="evaDeplacer(${r.id},'${pr.date}','${pr.heure}')">💗 Eva propose : ${fmtL(pr.date)} à ${pr.heure}</button>`:''} <button class="b b-line b-sm" style="margin-top:6px" onclick="modifier(${r.id})">Choisir un autre jour</button></div>`}).join('')}</div>`}
+// Eva cherche le 1er jour ouvert libre (même heure si possible) après le jour fermé
+function evaPropose(r){const d0=TYPES[r.type]||90;let d=parse(r.date>T?r.date:T);
+  for(let n=0;n<60;n++){d=addD(d,1);const ds=iso(d);if(jourFerme(ds))continue;const g=grille(ds);if(!g.length)continue;
+    const occ=R.filter(x=>x.date===ds&&x.id!==r.id&&(x.statut==='confirme'||x.statut==='attente')).map(x=>[mnP(x.heure),mnP(x.heure)+(TYPES[x.type]||90)]);
+    const libre=h=>{const t=mnP(h);return !occ.some(([a,b])=>t<b&&a<t+d0)};
+    const h=[r.heure,...g].find(h=>g.includes(h)&&libre(h));if(h)return{date:ds,heure:h}}return null}
+// Eva déplace le RDV puis montre le SMS à Dori (rien ne part sans elle)
+function evaDeplacer(id,nd,nh){const r=R.find(x=>x.id===id);if(!r)return;const c=getC(r.cid)||{};
+  if(!confirm(`Déplacer le RDV de ${c.prenom||''} au ${fmtL(nd)} à ${nh} ? ${c.prenom||'La cliente'} sera prévenue par message.`))return;
+  r.date=nd;r.heure=nh;render();
+  apercuMessages(r,'RDV déplacé par Eva ♡',`Bonjour ${c.prenom||''}, petit souci de calendrier : la boutique est fermée le jour choisi, toutes nos excuses. Votre RDV chez Reflet Ambré est déplacé au ${fmtL(r.date)} à ${r.heure}. Un autre moment vous arrange mieux ? Appelez-moi au 0475 72 18 52. Dori ♡`,'Votre rendez-vous a été déplacé',`Bonjour ${c.prenom||''},\n\nPetit souci de calendrier : la boutique est fermée le jour choisi, toutes nos excuses.\nVotre rendez-vous est déplacé au :\n${fmtL(r.date)} à ${r.heure}\n${r.type}\n\nUn autre moment vous arrange mieux ? Appelez-moi au 0475 72 18 52.\n\nÀ très vite,\nDori ♡`)}
+function evaFermesPopup(){try{if($('#ov').classList.contains('open')){setTimeout(evaFermesPopup,4000);return}const jf=rdvJourFerme();if(!jf.length)return;const k='ra_eva_fermes_'+T;if(LS.get(k))return;LS.set(k,1);
+  setTimeout(()=>ouvrir(`<h3>💗 Un petit mot d'Eva</h3>`+evaFermesHTML(jf)+`<div class="acts"><button class="b b-line" onclick="fermer()">J'ai compris</button></div>`),1200)}catch(e){}}
 function ouvert(n){let d=addD(TODAY,n);while(d.getDay()===0||d.getDay()===1)d=addD(d,1);return iso(d)}
 
 /* ================= DONNÉES (démo) ================= */
@@ -1548,7 +1567,8 @@ function vJour(){
   const att=R.filter(r=>r.statut==='attente').length;
   const fin=iso(addD(TODAY,7));const sem=R.filter(r=>r.date>=T&&r.date<=fin&&r.statut==='confirme').length;
   const proch=R.filter(r=>r.date>T&&r.statut==='confirme').sort((a,b)=>(a.date+a.heure).localeCompare(b.date+b.heure)).slice(0,3);
-  $('#main').innerHTML=(typeof factureHTML==='function'?factureHTML():'')+montreHTML()+`<h2 class="titre">Qui vient <em>aujourd'hui</em></h2>
+  const jf=rdvJourFerme();
+  $('#main').innerHTML=(typeof factureHTML==='function'?factureHTML():'')+montreHTML()+(jf.length?evaFermesHTML(jf):'')+`<h2 class="titre">Qui vient <em>aujourd'hui</em></h2>
   <div class="stats"><div class="stat"><b>${auj.length}</b><span>aujourd'hui</span></div><div class="stat" onclick="go('demandes')" style="cursor:pointer"><b>${att}</b><span>à valider</span></div><div class="stat"><b>${sem}</b><span>cette semaine</span></div></div>
   ${att?`<button class="b b-rose" style="width:100%;margin-top:12px" onclick="go('demandes')">♡ ${att} nouvelle${att>1?'s':''} demande${att>1?'s':''} à valider →</button>`:''}
   ${aboFin()-Date.now()<=60*864e5?aboCarte(true):''}
@@ -1785,6 +1805,7 @@ function ajouter(date,hh){date=date||ouvert(1);let h=hh||grille(date)[0]||'10:00
   $('#asend').onclick=e=>e.target.classList.toggle('on');
   $('#apar').oninput=e=>{const m=C.find(x=>telN(x.tel)===telN(e.target.value)&&telN(e.target.value).length>8);$('#aparok').textContent=m?`♡ Marraine trouvée : ${m.prenom} ${m.nom}`:''};
   $('#aok').onclick=()=>{let c=cexist;
+    if(jourFerme($('#ad').value)&&!confirm('La boutique est fermée ce jour-là. Ajouter ce RDV quand même ?'))return;
     if(!c){const p=$('#ap').value.trim();if(!p){toast('Ajoutez au moins le prénom');return}
       const pv=telN($('#apar').value);const mar=pv?C.find(x=>telN(x.tel)===pv):null;
       c=cli(p,$('#an').value.trim(),$('#at').value.trim()||'—',$('#ae').value.trim()||'—',$('#am').value,'normal','',mar?mar.id:null)}
@@ -2172,14 +2193,15 @@ function proposerNotifs(){alerteCredits();try{if(!LIVE||LS.get('ra_push_plustard
   <button class="b" style="width:100%" onclick="activerNotifs()">Oui, activer</button>
   <button class="b b-line" style="width:100%;margin-top:8px" onclick="LS.set('ra_push_plustard',1);fermer()">Plus tard</button>`),900)}catch(e){}}
 new MutationObserver(()=>{if($('#login').classList.contains('out'))proposerNotifs()}).observe($('#login'),{attributes:true,attributeFilter:['class']});
+new MutationObserver(()=>{if($('#login').classList.contains('out'))setTimeout(evaFermesPopup,2500)}).observe($('#login'),{attributes:true,attributeFilter:['class']});
 new MutationObserver(()=>{if($('#login').classList.contains('out'))_loginOk()}).observe($('#login'),{attributes:true,attributeFilter:['class']});
 /* ================= SYNCHRONISATION AVEC LE SERVEUR ================= */
-let SNAP={C:new Map(),R:new Map(),S:''},syncEnCours=null;
+let SNAP={C:new Map(),R:new Map(),S:''},syncEnCours=null,CHARGE=false; // CHARGE : rien n'est envoyé au serveur tant que les vraies données de Dori ne sont pas chargées (sinon les réglages d'exemple écrasent les siens)
 const snapAll=()=>{SNAP.C=new Map(C.map(c=>[c.id,JSON.stringify(c)]));SNAP.R=new Map(R.map(r=>[r.id,JSON.stringify(r)]));SNAP.S=JSON.stringify(S)};
 function changements(){const cc=C.filter(c=>SNAP.C.get(c.id)!==JSON.stringify(c)),rr=R.filter(r=>SNAP.R.get(r.id)!==JSON.stringify(r));
   const supprRdv=[...SNAP.R.keys()].filter(id=>!R.some(r=>r.id===id)),supprC=[...SNAP.C.keys()].filter(id=>!C.some(c=>c.id===id));
   const s=JSON.stringify(S);return{cc,rr,supprRdv,supprC,s:s!==SNAP.S?S:null,n:cc.length+rr.length+supprRdv.length+supprC.length+(s!==SNAP.S?1:0)}}
-function RA_sync(){if(!LIVE||!JETON)return Promise.resolve();if(syncEnCours)return syncEnCours.then(()=>RA_sync());
+function RA_sync(){if(!LIVE||!JETON||!CHARGE)return Promise.resolve();if(syncEnCours)return syncEnCours.then(()=>RA_sync());
   const x=changements();if(!x.n)return Promise.resolve();
   const body={clientes:x.cc,rdv:x.rr,supprRdv:x.supprRdv,supprC:x.supprC};if(x.s)body.S=x.s;
   const avant={C:x.cc.map(c=>[c.id,JSON.stringify(c)]),R:x.rr.map(r=>[r.id,JSON.stringify(r)]),S:x.s?JSON.stringify(x.s):null};
@@ -2188,9 +2210,9 @@ function RA_sync(){if(!LIVE||!JETON)return Promise.resolve();if(syncEnCours)retu
 async function RA_charger(){const d=await API('charger');if(!d.ok)throw new Error(d.erreur);SMS_CREDITS=typeof d.credits==='number'?d.credits:null;majCredits();
   C.length=0;R.length=0;d.C.forEach(c=>{c.amendes=c.amendes||[];C.push(c)});d.R.forEach(r=>R.push(r));
   if(d.S){Object.keys(d.S).forEach(k=>{S[k]=d.S[k]})}
-  snapAll();if(!d.S)SNAP.S='';return d}
+  snapAll();if(!d.S)SNAP.S='';CHARGE=true;return d}
 const occupe=()=>$('#ov').classList.contains('open')||['INPUT','TEXTAREA','SELECT'].includes((document.activeElement||{}).tagName);
-async function RA_rafraichir(){if(!LIVE||!JETON||!$('#login').classList.contains('out'))return;await RA_sync();if(changements().n||occupe())return;
+async function RA_rafraichir(){if(!LIVE||!JETON||!$('#login').classList.contains('out'))return;await RA_sync();if(CHARGE&&(changements().n||occupe()))return;
   const avant=R.filter(r=>r.statut==='attente').map(r=>r.id);const vieux=JSON.stringify([C,R]);
   try{await RA_charger()}catch(e){return}
   if(JSON.stringify([C,R])!==vieux){const nv=R.filter(r=>r.statut==='attente'&&!avant.includes(r.id));if(V!=='site'&&V!=='reglages'&&V!=='sms')render();else{const n=R.filter(r=>r.statut==='attente').length;$('#bdg').hidden=!n;$('#bdg').textContent=n}
@@ -2202,7 +2224,7 @@ if(LIVE){
   new MutationObserver(()=>document.querySelectorAll('.demo-note').forEach(e=>e.remove())).observe(document.body,{childList:true,subtree:true});
   setInterval(()=>RA_sync(),2500);setInterval(()=>RA_rafraichir(),30000);
   addEventListener('visibilitychange',()=>{if(!document.hidden)RA_rafraichir()});
-  addEventListener('beforeunload',e=>{if(changements().n){RA_sync();e.preventDefault()}});
+  addEventListener('beforeunload',e=>{if(CHARGE&&changements().n){RA_sync();e.preventDefault()}});
   // reconnexion automatique si le téléphone est déjà connecté
   const ac=LS.get('ra_acces');if(JETON&&ac){RA_charger().then(()=>{CUR=Object.assign({},S.acces.find(a=>a.id===ac.id)||ac);appliquerRole();$('#login').classList.add('out');render()}).catch(()=>{})}
 }
